@@ -40,7 +40,7 @@ export function authenticateRequest(authHeader) {
   return { authenticated: true, keyName: keyRow.name, isMaster: false };
 }
 
-export function findProviderForModel(modelName) {
+export function resolveProviderAndModel(requestedModel) {
   const activeProviders = db.prepare(`
     SELECT * FROM providers 
     WHERE is_active = 1 
@@ -51,22 +51,54 @@ export function findProviderForModel(modelName) {
     return null;
   }
 
-  // 1. Exact match in models list
+  // 1. Check for provider prefix: <provider_name>/<model_name>
+  for (const prov of activeProviders) {
+    const raw = prov.name.trim().toLowerCase();
+    const slug = raw.replace(/\s+/g, '-');
+    const unders = raw.replace(/\s+/g, '_');
+    const firstWord = raw.split(/[\s\-_]+/)[0];
+
+    const prefixes = new Set([
+      raw + '/',
+      slug + '/',
+      unders + '/',
+      ...(firstWord ? [firstWord + '/'] : [])
+    ]);
+
+    for (const prefix of prefixes) {
+      if (requestedModel.toLowerCase().startsWith(prefix)) {
+        const upstreamModel = requestedModel.slice(prefix.length);
+        if (!upstreamModel) continue;
+
+        try {
+          const models = JSON.parse(prov.models || '[]');
+          if (Array.isArray(models)) {
+            // Wildcard or explicit model support
+            if (models.includes('*') || models.some(m => m.toLowerCase() === upstreamModel.toLowerCase())) {
+              return { provider: prov, upstreamModel };
+            }
+          }
+        } catch {}
+      }
+    }
+  }
+
+  // 2. Direct exact match in models list
   for (const prov of activeProviders) {
     try {
       const models = JSON.parse(prov.models || '[]');
-      if (Array.isArray(models) && models.includes(modelName)) {
-        return prov;
+      if (Array.isArray(models) && models.includes(requestedModel)) {
+        return { provider: prov, upstreamModel: requestedModel };
       }
     } catch {}
   }
 
-  // 2. Wildcard match ('*')
+  // 3. Fallback to wildcard ('*') provider
   for (const prov of activeProviders) {
     try {
       const models = JSON.parse(prov.models || '[]');
       if (Array.isArray(models) && models.includes('*')) {
-        return prov;
+        return { provider: prov, upstreamModel: requestedModel };
       }
     } catch {}
   }
@@ -135,9 +167,9 @@ export async function handleChatCompletions(req, res, auth) {
     return;
   }
 
-  const provider = findProviderForModel(model);
+  const resolved = resolveProviderAndModel(model);
 
-  if (!provider) {
+  if (!resolved) {
     const latency = Date.now() - startTime;
     logRequest({
       keyName: auth.keyName,
@@ -160,7 +192,12 @@ export async function handleChatCompletions(req, res, auth) {
     return;
   }
 
+  const { provider, upstreamModel } = resolved;
   const targetUrl = resolveUrl(provider.base_url, 'v1/chat/completions');
+
+  // Strip provider prefix for upstream
+  parsedBody.model = upstreamModel;
+  const forwardBody = JSON.stringify(parsedBody);
 
   try {
     const upstreamRes = await fetch(targetUrl, {
@@ -169,7 +206,7 @@ export async function handleChatCompletions(req, res, auth) {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${provider.api_key}`
       },
-      body: rawBody
+      body: forwardBody
     });
 
     if (isStream && upstreamRes.ok) {
@@ -257,12 +294,20 @@ export function handleGetModels(res) {
   const modelSet = new Set();
 
   for (const prov of activeProviders) {
+    const rawName = (prov.name || '').trim();
+    const slug = rawName.toLowerCase().replace(/\s+/g, '-');
+
     try {
       const parsed = JSON.parse(prov.models || '[]');
       if (Array.isArray(parsed)) {
         for (const m of parsed) {
           if (m && m !== '*') {
+            // Unscoped model
             modelSet.add(m);
+            // Provider-scoped model
+            if (slug) {
+              modelSet.add(`${slug}/${m}`);
+            }
           }
         }
       }
