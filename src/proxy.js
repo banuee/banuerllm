@@ -302,11 +302,10 @@ export function handleGetModels(res) {
       if (Array.isArray(parsed)) {
         for (const m of parsed) {
           if (m && m !== '*') {
-            // Unscoped model
-            modelSet.add(m);
-            // Provider-scoped model
             if (slug) {
               modelSet.add(`${slug}/${m}`);
+            } else {
+              modelSet.add(m);
             }
           }
         }
