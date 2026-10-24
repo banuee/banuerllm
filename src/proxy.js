@@ -1,6 +1,6 @@
 import { Readable } from 'node:stream';
 import crypto from 'node:crypto';
-import { db, hashKey, getOrCreateAdminKey } from './db.js';
+import { db, hashKey, getOrCreateAdminKey, getSetting } from './db.js';
 
 export function resolveUrl(base, path) {
   let b = base.trim().replace(/\/+$/, '');
@@ -197,6 +197,30 @@ export async function handleChatCompletions(req, res, auth) {
 
   // Strip provider prefix for upstream
   parsedBody.model = upstreamModel;
+
+  // Handle system prompt mode & global skills
+  const systemPromptMode = getSetting('system_prompt_mode') || 'passthrough';
+  const globalPrompt = (getSetting('global_system_prompt') || '').trim();
+
+  if (Array.isArray(parsedBody.messages)) {
+    if (systemPromptMode === 'strip') {
+      // Blind audit mode: remove client-injected identity
+      parsedBody.messages = parsedBody.messages.filter(m => m.role !== 'system');
+    } else if (systemPromptMode === 'override' && globalPrompt) {
+      // Complete replacement
+      parsedBody.messages = parsedBody.messages.filter(m => m.role !== 'system');
+      parsedBody.messages.unshift({ role: 'system', content: globalPrompt });
+    } else if (systemPromptMode === 'prepend' && globalPrompt) {
+      // Prepend global instructions / skills
+      const sysMsg = parsedBody.messages.find(m => m.role === 'system');
+      if (sysMsg) {
+        sysMsg.content = `${globalPrompt}\n\n${sysMsg.content}`;
+      } else {
+        parsedBody.messages.unshift({ role: 'system', content: globalPrompt });
+      }
+    }
+  }
+
   const forwardBody = JSON.stringify(parsedBody);
 
   try {

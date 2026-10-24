@@ -593,6 +593,14 @@ function stopLogTimer() {
 }
 
 // Status & Settings
+const systemPromptForm = document.getElementById('system-prompt-form');
+const systemPromptMode = document.getElementById('system-prompt-mode');
+const globalSystemPrompt = document.getElementById('global-system-prompt');
+const gistForm = document.getElementById('gist-form');
+const gistTokenInput = document.getElementById('gist-token-input');
+const gistPushBtn = document.getElementById('gist-push-btn');
+const gistPullBtn = document.getElementById('gist-pull-btn');
+
 async function loadStatus() {
   try {
     const res = await apiFetch('/api/status');
@@ -605,10 +613,91 @@ async function loadStatus() {
     } else {
       keepaliveLastTime.textContent = 'еще не выполнялся';
     }
+
+    // Load Settings
+    const setRes = await apiFetch('/api/settings');
+    const set = await setRes.json();
+    systemPromptMode.value = set.system_prompt_mode || 'passthrough';
+    globalSystemPrompt.value = set.global_system_prompt || '';
+    if (set.github_token_masked) {
+      gistTokenInput.placeholder = `Активен: ${set.github_token_masked}`;
+    }
   } catch (err) {
     console.error('Failed to load status:', err);
   }
 }
+
+systemPromptForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  try {
+    await apiFetch('/api/settings', {
+      method: 'POST',
+      body: JSON.stringify({
+        system_prompt_mode: systemPromptMode.value,
+        global_system_prompt: globalSystemPrompt.value
+      })
+    });
+    alert('Настройки системного промпта сохранены');
+  } catch {
+    alert('Ошибка сохранения');
+  }
+});
+
+gistForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const token = gistTokenInput.value.trim();
+  if (!token) return;
+  try {
+    await apiFetch('/api/settings', {
+      method: 'POST',
+      body: JSON.stringify({ github_token: token })
+    });
+    gistTokenInput.value = '';
+    alert('GitHub Token сохранен, хранилище подключено');
+    loadStatus();
+    loadProviders();
+  } catch {
+    alert('Ошибка привязки GitHub Token');
+  }
+});
+
+gistPushBtn.addEventListener('click', async () => {
+  gistPushBtn.disabled = true;
+  gistPushBtn.textContent = '...';
+  try {
+    const res = await apiFetch('/api/sync/gist', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'push' })
+    });
+    const data = await res.json();
+    alert(data.message);
+  } catch {
+    alert('Сбой выгрузки в Gist');
+  } finally {
+    gistPushBtn.disabled = false;
+    gistPushBtn.textContent = 'Выгрузить';
+  }
+});
+
+gistPullBtn.addEventListener('click', async () => {
+  gistPullBtn.disabled = true;
+  gistPullBtn.textContent = '...';
+  try {
+    const res = await apiFetch('/api/sync/gist', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'pull' })
+    });
+    const data = await res.json();
+    alert(data.message);
+    loadProviders();
+    loadKeys();
+  } catch {
+    alert('Сбой восстановления из Gist');
+  } finally {
+    gistPullBtn.disabled = false;
+    gistPullBtn.textContent = 'Восстановить';
+  }
+});
 
 keepaliveForm.addEventListener('submit', async (e) => {
   e.preventDefault();

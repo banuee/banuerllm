@@ -241,6 +241,56 @@ response = client.chat.completions.create(
           </div>
         </div>
 
+        <!-- System Prompt & Skills -->
+        <div class="panel">
+          <div class="panel-header">
+            <h3>Системный промпт и скиллы</h3>
+          </div>
+          <div class="panel-body">
+            <form id="system-prompt-form" class="form-vertical">
+              <div class="form-group">
+                <label for="system-prompt-mode">Режим обработки</label>
+                <select id="system-prompt-mode" class="input">
+                  <option value="passthrough">Без изменений (по умолчанию)</option>
+                  <option value="strip">Очищать (слепой тест / без подсказок клиенту)</option>
+                  <option value="prepend">Дополнять (глобальные инструкции / скиллы)</option>
+                  <option value="override">Полностью заменять системный промпт</option>
+                </select>
+              </div>
+
+              <div class="form-group" id="global-prompt-group">
+                <label for="global-system-prompt">Глобальный промпт / скилл</label>
+                <textarea id="global-system-prompt" class="input textarea" rows="4" placeholder="Инструкции, применяемые к каждому запросу..."></textarea>
+              </div>
+
+              <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Сохранить</button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <!-- Cloud Sync (GitHub Gist) -->
+        <div class="panel">
+          <div class="panel-header">
+            <h3>Авто-сохранение (GitHub Gist)</h3>
+          </div>
+          <div class="panel-body">
+            <p class="panel-desc">Защита от сброса при перезапуске Render. Все провайдеры и ключи сохраняются в приватный Gist.</p>
+            <form id="gist-form" class="form-vertical">
+              <div class="form-group">
+                <label for="gist-token-input">GitHub Personal Access Token (ghp_...)</label>
+                <input type="password" id="gist-token-input" class="input" placeholder="ghp_..." autocomplete="off">
+              </div>
+              <div class="form-actions" style="display: flex; gap: var(--space-xs); flex-wrap: wrap;">
+                <button type="submit" class="btn btn-primary">Сохранить</button>
+                <button type="button" class="btn btn-secondary btn-sm" id="gist-push-btn">Выгрузить</button>
+                <button type="button" class="btn btn-secondary btn-sm" id="gist-pull-btn">Восстановить</button>
+              </div>
+            </form>
+          </div>
+        </div>
+
         <!-- Backup & Restore -->
         <div class="panel">
           <div class="panel-header">
@@ -252,8 +302,6 @@ response = client.chat.completions.create(
               <button type="button" class="btn btn-secondary btn-sm" id="export-backup-btn">Экспорт (JSON)</button>
               <button type="button" class="btn btn-secondary btn-sm" id="open-import-modal-btn">Импорт</button>
             </div>
-          </div>
-        </div>
           </div>
         </div>
       </div>

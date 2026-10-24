@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { db, hashKey, getSetting, setSetting, getOrCreateAdminKey } from './db.js';
 import { handleChatCompletions, handleGetModels, authenticateRequest, resolveUrl } from './proxy.js';
 import { filterOpenRouterModels } from './filter.js';
+import { pullFromGist, pushToGist } from './sync.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -282,6 +283,7 @@ const server = http.createServer(async (req, res) => {
         Number(data.priority) || 0,
         Date.now()
       );
+      pushToGist().catch(() => {});
       sendJson(res, 201, { id, message: 'Provider added' });
       return;
     }
@@ -308,6 +310,7 @@ const server = http.createServer(async (req, res) => {
         WHERE id = ?
       `).run(name, baseUrl, apiKey, modelsJson, isActive, priority, id);
 
+      pushToGist().catch(() => {});
       sendJson(res, 200, { message: 'Provider updated' });
       return;
     }
@@ -315,6 +318,7 @@ const server = http.createServer(async (req, res) => {
     if (pathname.startsWith('/api/providers/') && req.method === 'DELETE') {
       const id = pathname.replace('/api/providers/', '');
       db.prepare('DELETE FROM providers WHERE id = ?').run(id);
+      pushToGist().catch(() => {});
       sendJson(res, 200, { message: 'Provider deleted' });
       return;
     }
@@ -391,6 +395,7 @@ const server = http.createServer(async (req, res) => {
         VALUES (?, ?, ?, ?, 1, ?)
       `).run(id, name.trim(), hashed, prefix, Date.now());
 
+      pushToGist().catch(() => {});
       // Return rawKey once so user can copy it
       sendJson(res, 201, { id, name: name.trim(), key: rawKey, prefix });
       return;
@@ -399,6 +404,7 @@ const server = http.createServer(async (req, res) => {
     if (pathname.startsWith('/api/keys/') && req.method === 'DELETE') {
       const id = pathname.replace('/api/keys/', '');
       db.prepare('DELETE FROM keys WHERE id = ?').run(id);
+      pushToGist().catch(() => {});
       sendJson(res, 200, { message: 'Key deleted' });
       return;
     }
@@ -491,7 +497,54 @@ const server = http.createServer(async (req, res) => {
         refreshKeepalive();
       }
 
+      pushToGist().catch(() => {});
       sendJson(res, 200, { message: 'Backup restored successfully' });
+      return;
+    }
+
+    // Settings API
+    if (pathname === '/api/settings' && req.method === 'GET') {
+      const token = process.env.GITHUB_TOKEN || getSetting('github_token') || '';
+      sendJson(res, 200, {
+        system_prompt_mode: getSetting('system_prompt_mode') || 'passthrough',
+        global_system_prompt: getSetting('global_system_prompt') || '',
+        github_token_masked: token ? (token.slice(0, 7) + '...' + token.slice(-4)) : '',
+        render_keepalive_url: getSetting('render_keepalive_url') || ''
+      });
+      return;
+    }
+
+    if (pathname === '/api/settings' && req.method === 'POST') {
+      const data = await parseJsonBody(req);
+      if (data.system_prompt_mode) {
+        setSetting('system_prompt_mode', data.system_prompt_mode.trim());
+      }
+      if (data.global_system_prompt !== undefined) {
+        setSetting('global_system_prompt', data.global_system_prompt.trim());
+      }
+      if (data.github_token) {
+        setSetting('github_token', data.github_token.trim());
+        await pullFromGist();
+      }
+      if (data.render_keepalive_url !== undefined) {
+        setSetting('render_keepalive_url', data.render_keepalive_url.trim());
+        refreshKeepalive();
+      }
+      await pushToGist();
+      sendJson(res, 200, { message: 'Settings updated' });
+      return;
+    }
+
+    // Force Sync with Gist
+    if (pathname === '/api/sync/gist' && req.method === 'POST') {
+      const { action } = await parseJsonBody(req);
+      if (action === 'push') {
+        const ok = await pushToGist();
+        sendJson(res, 200, { ok, message: ok ? 'Сохранено в GitHub Gist' : 'Ошибка сохранения' });
+      } else {
+        const ok = await pullFromGist();
+        sendJson(res, 200, { ok, message: ok ? 'Восстановлено из GitHub Gist' : 'Ошибка загрузки' });
+      }
       return;
     }
 
@@ -511,10 +564,11 @@ const server = http.createServer(async (req, res) => {
 });
 
 // Start Server
-server.listen(PORT, HOST, () => {
+server.listen(PORT, HOST, async () => {
   const masterKey = getOrCreateAdminKey();
   refreshKeepalive();
   startPeriodicModelSync();
+  await pullFromGist().catch(() => {});
   console.log(`\n========================================`);
   console.log(`🚀 banuerllm running on http://${HOST}:${PORT}`);
   console.log(`🔑 Master Admin Key: ${masterKey}`);
