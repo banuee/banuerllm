@@ -144,3 +144,4 @@ banuerllm/
 ├── render.yaml        # Манифест для деплоя в Render в один клик
 └── package.json
 ```
+# banuerllm
