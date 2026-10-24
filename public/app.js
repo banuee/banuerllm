@@ -211,6 +211,7 @@ async function loadProviders() {
             </span>
           </td>
           <td class="col-actions">
+            <button class="btn btn-secondary btn-xs btn-sync-prov" data-id="${p.id}">Синхр.</button>
             <button class="btn btn-secondary btn-xs btn-test-prov" data-id="${p.id}" data-url="${escapeHtml(p.base_url)}">Тест</button>
             <button class="btn btn-secondary btn-xs btn-edit-prov" data-id="${p.id}">Изменить</button>
             <button class="btn btn-danger btn-xs btn-delete-prov" data-id="${p.id}">Удалить</button>
@@ -255,6 +256,29 @@ function bindProviderActions(providers) {
       fetchModelsFeedback.textContent = '';
 
       providerModal.showModal();
+    });
+  });
+
+  document.querySelectorAll('.btn-sync-prov').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const origText = btn.textContent;
+      btn.textContent = '...';
+      btn.disabled = true;
+      try {
+        const res = await apiFetch(`/api/providers/${btn.dataset.id}/sync`, { method: 'POST' });
+        const data = await res.json();
+        if (data.ok) {
+          alert(`Синхронизировано: ${data.count} моделей`);
+          loadProviders();
+        } else {
+          alert('Сбой синхронизации');
+        }
+      } catch {
+        alert('Ошибка при синхронизации моделей');
+      } finally {
+        btn.textContent = origText;
+        btn.disabled = false;
+      }
     });
   });
 
@@ -364,7 +388,11 @@ fetchModelsBtn.addEventListener('click', async () => {
   try {
     const res = await apiFetch('/api/providers/test', {
       method: 'POST',
-      body: JSON.stringify({ base_url: baseUrl, api_key: apiKey || 'test' })
+      body: JSON.stringify({
+        base_url: baseUrl,
+        api_key: apiKey || 'test',
+        name: provNameInput.value.trim()
+      })
     });
     const data = await res.json();
     if (data.ok && data.models && data.models.length > 0) {

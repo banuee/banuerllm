@@ -5,6 +5,7 @@ import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { db, hashKey, getSetting, setSetting, getOrCreateAdminKey } from './db.js';
 import { handleChatCompletions, handleGetModels, authenticateRequest, resolveUrl } from './proxy.js';
+import { filterOpenRouterModels } from './filter.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -36,6 +37,52 @@ function refreshKeepalive() {
       }
     }, 12 * 60 * 1000); // 12 minutes (Render sleeps at 15)
   }
+}
+
+export async function syncProviderModels(provider) {
+  if (!provider || !provider.base_url || !provider.api_key) return [];
+  const testUrl = resolveUrl(provider.base_url, 'v1/models');
+  try {
+    const resp = await fetch(testUrl, {
+      headers: { 'Authorization': `Bearer ${provider.api_key}` },
+      signal: AbortSignal.timeout(15000)
+    });
+    if (!resp.ok) return [];
+    const body = await resp.json();
+    let models = Array.isArray(body.data) ? body.data.map(m => m.id) : [];
+
+    const isOR = (provider.name || '').toLowerCase().includes('openrouter') ||
+                 (provider.base_url || '').toLowerCase().includes('openrouter');
+    if (isOR) {
+      models = filterOpenRouterModels(models);
+    }
+
+    if (models.length > 0) {
+      db.prepare('UPDATE providers SET models = ? WHERE id = ?').run(JSON.stringify(models), provider.id);
+      console.log(`[AutoSync] Synced ${models.length} models for ${provider.name}`);
+    }
+    return models;
+  } catch (err) {
+    console.error(`[AutoSync] Failed to sync models for ${provider.name}:`, err.message);
+    return [];
+  }
+}
+
+let modelSyncTimer = null;
+function startPeriodicModelSync() {
+  if (modelSyncTimer) clearInterval(modelSyncTimer);
+  modelSyncTimer = setInterval(async () => {
+    try {
+      const activeProviders = db.prepare('SELECT * FROM providers WHERE is_active = 1').all();
+      for (const prov of activeProviders) {
+        if ((prov.name || '').toLowerCase().includes('openrouter') || prov.models !== '["*"]') {
+          await syncProviderModels(prov);
+        }
+      }
+    } catch (err) {
+      console.error('[PeriodicSync] Error in periodic sync:', err.message);
+    }
+  }, 60 * 60 * 1000); // every 1 hour
 }
 
 // Helpers
@@ -272,9 +319,22 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    // Manual on-demand sync provider models
+    if (pathname.startsWith('/api/providers/') && pathname.endsWith('/sync') && req.method === 'POST') {
+      const id = pathname.replace('/api/providers/', '').replace('/sync', '');
+      const provider = db.prepare('SELECT * FROM providers WHERE id = ?').get(id);
+      if (!provider) {
+        sendJson(res, 404, { error: 'Provider not found' });
+        return;
+      }
+      const models = await syncProviderModels(provider);
+      sendJson(res, 200, { ok: true, count: models.length, models });
+      return;
+    }
+
     // Test connection / probe provider models
     if (pathname === '/api/providers/test' && req.method === 'POST') {
-      const { base_url, api_key } = await parseJsonBody(req);
+      const { base_url, api_key, name } = await parseJsonBody(req);
       if (!base_url || !api_key) {
         sendJson(res, 400, { error: 'base_url and api_key required' });
         return;
@@ -284,12 +344,19 @@ const server = http.createServer(async (req, res) => {
       try {
         const resp = await fetch(testUrl, {
           headers: { 'Authorization': `Bearer ${api_key}` },
-          signal: AbortSignal.timeout(8000)
+          signal: AbortSignal.timeout(12000)
         });
         const latency = Date.now() - start;
         if (resp.ok) {
           const body = await resp.json();
-          const models = Array.isArray(body.data) ? body.data.map(m => m.id) : [];
+          let models = Array.isArray(body.data) ? body.data.map(m => m.id) : [];
+
+          const isOR = (name || '').toLowerCase().includes('openrouter') ||
+                       (base_url || '').toLowerCase().includes('openrouter');
+          if (isOR) {
+            models = filterOpenRouterModels(models);
+          }
+
           sendJson(res, 200, { ok: true, status: resp.status, latency_ms: latency, models });
         } else {
           const errText = await resp.text();
@@ -447,6 +514,7 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, HOST, () => {
   const masterKey = getOrCreateAdminKey();
   refreshKeepalive();
+  startPeriodicModelSync();
   console.log(`\n========================================`);
   console.log(`🚀 banuerllm running on http://${HOST}:${PORT}`);
   console.log(`🔑 Master Admin Key: ${masterKey}`);
