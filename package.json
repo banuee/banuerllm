@@ -1,0 +1,23 @@
+{
+  "name": "banuerllm",
+  "version": "1.0.0",
+  "description": "Unified OpenAI-compatible LLM proxy and key vault",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "keywords": [
+    "llm",
+    "openai",
+    "proxy",
+    "gateway",
+    "key-vault"
+  ],
+  "author": "",
+  "license": "MIT"
+}

@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>banuerllm · шлюз api</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&family=Geist:wght@400;500;600&family=Instrument+Serif&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./tokens.css">
+  <link rel="stylesheet" href="./base.css">
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <!-- Header Shell -->
+  <header class="app-header">
+    <div class="header-container">
+      <div class="brand">
+        <span class="brand-title">banuerllm</span>
+        <span class="brand-status" id="gateway-status">подключение...</span>
+      </div>
+
+      <nav class="nav-tabs" role="tablist">
+        <button class="nav-tab active" data-tab="providers" role="tab" aria-selected="true">Провайдеры</button>
+        <button class="nav-tab" data-tab="keys" role="tab" aria-selected="false">Ключи</button>
+        <button class="nav-tab" data-tab="logs" role="tab" aria-selected="false">Журнал</button>
+        <button class="nav-tab" data-tab="settings" role="tab" aria-selected="false">Параметры</button>
+      </nav>
+
+      <div class="header-actions">
+        <button class="btn btn-secondary btn-sm" id="auth-btn">Авторизация</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Auth Prompt Barrier -->
+  <div class="auth-banner" id="auth-banner" hidden>
+    <div class="auth-card">
+      <h2 class="auth-heading">Вход администратора</h2>
+      <p class="auth-desc">Укажите мастер-ключ для управления шлюзом.</p>
+      <form id="auth-form" class="auth-form">
+        <input type="password" id="master-key-input" class="input" placeholder="banue-admin-..." required autocomplete="current-password">
+        <div class="auth-actions">
+          <button type="submit" class="btn btn-primary">Войти</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <main class="main-content" id="main-view">
+    <!-- TAB 1: PROVIDERS -->
+    <section class="tab-pane active" id="pane-providers">
+      <div class="pane-header">
+        <div class="pane-title-group">
+          <h2>Подключенные провайдеры</h2>
+          <span class="count-badge num" id="providers-count">0</span>
+        </div>
+        <button class="btn btn-primary" id="open-add-provider-btn">Добавить</button>
+      </div>
+
+      <div class="table-container" id="providers-table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Имя</th>
+              <th>Базовый URL</th>
+              <th>API-ключ</th>
+              <th>Модели</th>
+              <th>Приоритет</th>
+              <th>Статус</th>
+              <th class="col-actions">Действия</th>
+            </tr>
+          </thead>
+          <tbody id="providers-list">
+            <!-- Populated via app.js -->
+          </tbody>
+        </table>
+      </div>
+
+      <div class="empty-state" id="providers-empty" hidden>
+        <p>Провайдеры пока не добавлены.</p>
+        <button class="btn btn-primary btn-sm" id="empty-add-provider-btn">Добавить первого провайдера</button>
+      </div>
+    </section>
+
+    <!-- TAB 2: VIRTUAL KEYS -->
+    <section class="tab-pane" id="pane-keys" hidden>
+      <div class="pane-header">
+        <div class="pane-title-group">
+          <h2>Виртуальные ключи</h2>
+          <span class="count-badge num" id="keys-count">0</span>
+        </div>
+        <button class="btn btn-primary" id="open-add-key-btn">Создать ключ</button>
+      </div>
+
+      <div class="new-key-banner" id="new-key-banner" hidden>
+        <div class="new-key-inner">
+          <div class="new-key-info">
+            <span class="new-key-label">Новый API-ключ создан (скопируйте сейчас, он не сохраняется в открытом виде):</span>
+            <code class="new-key-value" id="new-key-display"></code>
+          </div>
+          <button class="btn btn-secondary btn-sm" id="copy-new-key-btn">Скопировать</button>
+          <button class="btn-icon" id="close-new-key-btn" title="Закрыть">✕</button>
+        </div>
+      </div>
+
+      <div class="table-container" id="keys-table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Название</th>
+              <th>Префикс</th>
+              <th>Создан</th>
+              <th>Последний запрос</th>
+              <th class="col-actions">Действия</th>
+            </tr>
+          </thead>
+          <tbody id="keys-list">
+            <!-- Populated via app.js -->
+          </tbody>
+        </table>
+      </div>
+
+      <div class="empty-state" id="keys-empty" hidden>
+        <p>Виртуальные ключи еще не сгенерированы.</p>
+        <button class="btn btn-primary btn-sm" id="empty-add-key-btn">Создать первый ключ</button>
+      </div>
+    </section>
+
+    <!-- TAB 3: LOGS -->
+    <section class="tab-pane" id="pane-logs" hidden>
+      <div class="pane-header">
+        <div class="pane-title-group">
+          <h2>Журнал запросов</h2>
+          <span class="count-badge num" id="logs-count">0</span>
+        </div>
+        <div class="pane-header-actions">
+          <label class="toggle-control">
+            <input type="checkbox" id="auto-refresh-logs" checked>
+            <span>Автообновление (3с)</span>
+          </label>
+          <button class="btn btn-secondary btn-sm" id="refresh-logs-btn">Обновить</button>
+        </div>
+      </div>
+
+      <div class="table-container" id="logs-table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Время</th>
+              <th>Ключ</th>
+              <th>Модель</th>
+              <th>Провайдер</th>
+              <th>Код</th>
+              <th>Задержка</th>
+              <th>Поток</th>
+            </tr>
+          </thead>
+          <tbody id="logs-list">
+            <!-- Populated via app.js -->
+          </tbody>
+        </table>
+      </div>
+
+      <div class="empty-state" id="logs-empty" hidden>
+        <p>Запросов пока не поступало.</p>
+      </div>
+    </section>
+
+    <!-- TAB 4: SETTINGS & RENDER KEEPALIVE -->
+    <section class="tab-pane" id="pane-settings" hidden>
+      <div class="settings-grid">
+        <!-- Render Keepalive Card -->
+        <div class="panel">
+          <div class="panel-header">
+            <h3>Render Keep-Alive</h3>
+          </div>
+          <div class="panel-body">
+            <p class="panel-desc">Автоматический пинг каждые 12 минут, предотвращающий засыпание бесплатного инстанса Render.</p>
+            <form id="keepalive-form" class="form-vertical">
+              <div class="form-group">
+                <label for="keepalive-url">URL сервиса</label>
+                <input type="url" id="keepalive-url" class="input" placeholder="https://banuerllm.onrender.com/ping">
+              </div>
+              <div class="keepalive-status-box" id="keepalive-status-box">
+                <span class="status-label">Последний пинг:</span>
+                <span class="status-val num" id="keepalive-last-time">—</span>
+              </div>
+              <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Сохранить</button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <!-- Connection Instructions -->
+        <div class="panel">
+          <div class="panel-header">
+            <h3>Параметры подключения</h3>
+          </div>
+          <div class="panel-body">
+            <div class="guide-item">
+              <span class="guide-label">Base URL:</span>
+              <div class="copy-field">
+                <code id="endpoint-url-display">https://&lt;host&gt;/v1</code>
+                <button class="btn btn-secondary btn-xs" id="copy-endpoint-btn">Скопировать</button>
+              </div>
+            </div>
+
+            <div class="guide-code-block">
+              <span class="guide-label">Пример для Python (OpenAI SDK):</span>
+              <pre><code>from openai import OpenAI
+
+client = OpenAI(
+    base_url="https://&lt;host&gt;/v1",
+    api_key="sk-banue-..."
+)
+
+response = client.chat.completions.create(
+    model="deepseek-chat",
+    messages=[{"role": "user", "content": "Привет!"}],
+    stream=True
+)</code></pre>
+            </div>
+          </div>
+        </div>
+
+        <!-- Master Key Info -->
+        <div class="panel">
+          <div class="panel-header">
+            <h3>Администрирование</h3>
+          </div>
+          <div class="panel-body">
+            <div class="guide-item">
+              <span class="guide-label">Мастер-ключ сессии:</span>
+              <div class="copy-field">
+                <code id="active-master-key-display">••••••••••••••••</code>
+                <button class="btn btn-secondary btn-xs" id="forget-master-key-btn">Сменить ключ</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- MODAL: ADD / EDIT PROVIDER -->
+  <dialog class="modal-dialog" id="provider-modal">
+    <div class="modal-surface">
+      <div class="modal-header">
+        <h3 id="provider-modal-title">Новый провайдер</h3>
+        <button class="btn-icon" id="close-provider-modal-btn">✕</button>
+      </div>
+
+      <form id="provider-form" class="modal-form">
+        <input type="hidden" id="prov-id">
+
+        <div class="form-group">
+          <label for="prov-name">Название</label>
+          <input type="text" id="prov-name" class="input" placeholder="например, DeepSeek Official" required>
+        </div>
+
+        <div class="form-group">
+          <label for="prov-base-url">Базовый URL эндпоинта</label>
+          <input type="url" id="prov-base-url" class="input" placeholder="https://api.deepseek.com/v1" required>
+        </div>
+
+        <div class="form-group">
+          <label for="prov-api-key">API-ключ провайдера</label>
+          <input type="password" id="prov-api-key" class="input" placeholder="sk-..." required autocomplete="off">
+        </div>
+
+        <div class="form-group">
+          <div class="label-with-action">
+            <label for="prov-models">Список моделей (через запятую или * для всех)</label>
+            <button type="button" class="btn btn-secondary btn-xs" id="fetch-models-btn">Загрузить с сервера</button>
+          </div>
+          <textarea id="prov-models" class="input textarea" rows="3" placeholder="deepseek-chat, deepseek-coder или *"></textarea>
+          <span class="field-feedback" id="fetch-models-feedback"></span>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group flex-1">
+            <label for="prov-priority">Приоритет (число)</label>
+            <input type="number" id="prov-priority" class="input" value="0">
+          </div>
+          <div class="form-group flex-1 form-group-checkbox">
+            <label class="toggle-control">
+              <input type="checkbox" id="prov-active" checked>
+              <span>Активен</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="modal-test-area">
+          <button type="button" class="btn btn-secondary" id="test-prov-btn">Тест соединения</button>
+          <span class="test-result-indicator" id="test-prov-result"></span>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" id="cancel-provider-btn">Отмена</button>
+          <button type="submit" class="btn btn-primary" id="save-provider-btn">Сохранить</button>
+        </div>
+      </form>
+    </div>
+  </dialog>
+
+  <!-- MODAL: CREATE VIRTUAL KEY -->
+  <dialog class="modal-dialog" id="key-modal">
+    <div class="modal-surface">
+      <div class="modal-header">
+        <h3>Новый виртуальный ключ</h3>
+        <button class="btn-icon" id="close-key-modal-btn">✕</button>
+      </div>
+
+      <form id="key-form" class="modal-form">
+        <div class="form-group">
+          <label for="key-name">Название или назначение</label>
+          <input type="text" id="key-name" class="input" placeholder="например, Cursor IDE на ноутбуке" required>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" id="cancel-key-btn">Отмена</button>
+          <button type="submit" class="btn btn-primary">Создать</button>
+        </div>
+      </form>
+    </div>
+  </dialog>
+
+  <script src="./app.js"></script>
+</body>
+</html>
