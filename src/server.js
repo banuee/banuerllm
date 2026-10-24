@@ -352,6 +352,82 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    // Backup & Restore
+    if (pathname === '/api/backup' && req.method === 'GET') {
+      const providers = db.prepare('SELECT * FROM providers').all();
+      const keys = db.prepare('SELECT * FROM keys').all();
+      const keepaliveUrl = getSetting('render_keepalive_url') || '';
+      sendJson(res, 200, {
+        version: 1,
+        exported_at: Date.now(),
+        providers: providers.map(p => ({
+          ...p,
+          models: JSON.parse(p.models || '[]')
+        })),
+        keys,
+        keepalive_url: keepaliveUrl
+      });
+      return;
+    }
+
+    if (pathname === '/api/backup' && req.method === 'POST') {
+      const data = await parseJsonBody(req);
+      if (Array.isArray(data.providers)) {
+        for (const p of data.providers) {
+          if (p.name && p.base_url && p.api_key) {
+            db.prepare(`
+              INSERT INTO providers (id, name, base_url, api_key, models, is_active, priority, created_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+              ON CONFLICT(id) DO UPDATE SET
+                name = excluded.name,
+                base_url = excluded.base_url,
+                api_key = excluded.api_key,
+                models = excluded.models,
+                is_active = excluded.is_active,
+                priority = excluded.priority
+            `).run(
+              p.id || crypto.randomUUID(),
+              p.name.trim(),
+              p.base_url.trim(),
+              p.api_key.trim(),
+              JSON.stringify(Array.isArray(p.models) ? p.models : ['*']),
+              p.is_active ?? 1,
+              Number(p.priority) || 0,
+              p.created_at || Date.now()
+            );
+          }
+        }
+      }
+
+      if (Array.isArray(data.keys)) {
+        for (const k of data.keys) {
+          if (k.name && k.key_hash && k.key_prefix) {
+            db.prepare(`
+              INSERT INTO keys (id, name, key_hash, key_prefix, is_active, created_at, last_used_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?)
+              ON CONFLICT(id) DO NOTHING
+            `).run(
+              k.id || crypto.randomUUID(),
+              k.name,
+              k.key_hash,
+              k.key_prefix,
+              k.is_active ?? 1,
+              k.created_at || Date.now(),
+              k.last_used_at || null
+            );
+          }
+        }
+      }
+
+      if (data.keepalive_url) {
+        setSetting('render_keepalive_url', data.keepalive_url.trim());
+        refreshKeepalive();
+      }
+
+      sendJson(res, 200, { message: 'Backup restored successfully' });
+      return;
+    }
+
     // 404 for unknown /api/
     sendJson(res, 404, { error: 'API route not found' });
     return;

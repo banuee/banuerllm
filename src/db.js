@@ -81,3 +81,38 @@ export function getOrCreateAdminKey() {
   }
   return existing;
 }
+
+export function seedProvidersFromEnv() {
+  if (!process.env.PROVIDERS_CONFIG) return;
+  try {
+    const count = db.prepare('SELECT COUNT(*) as c FROM providers').get().c;
+    if (count === 0) {
+      const list = JSON.parse(process.env.PROVIDERS_CONFIG);
+      if (Array.isArray(list)) {
+        for (const item of list) {
+          if (item.name && item.base_url && item.api_key) {
+            db.prepare(`
+              INSERT INTO providers (id, name, base_url, api_key, models, is_active, priority, created_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            `).run(
+              item.id || crypto.randomUUID(),
+              item.name.trim(),
+              item.base_url.trim(),
+              item.api_key.trim(),
+              JSON.stringify(Array.isArray(item.models) ? item.models : ['*']),
+              item.is_active ?? 1,
+              item.priority || 0,
+              Date.now()
+            );
+          }
+        }
+        console.log(`[Seed] Seeded ${list.length} providers from PROVIDERS_CONFIG`);
+      }
+    }
+  } catch (err) {
+    console.error('[Seed] Failed to parse PROVIDERS_CONFIG:', err.message);
+  }
+}
+
+seedProvidersFromEnv();
+

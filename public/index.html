@@ -228,16 +228,32 @@ response = client.chat.completions.create(
         <!-- Master Key Info -->
         <div class="panel">
           <div class="panel-header">
-            <h3>Администрирование</h3>
+            <h3>Сессия администратора</h3>
           </div>
           <div class="panel-body">
             <div class="guide-item">
-              <span class="guide-label">Мастер-ключ сессии:</span>
+              <span class="guide-label">Мастер-ключ в браузере:</span>
               <div class="copy-field">
                 <code id="active-master-key-display">••••••••••••••••</code>
-                <button class="btn btn-secondary btn-xs" id="forget-master-key-btn">Сменить ключ</button>
+                <button class="btn btn-secondary btn-xs" id="forget-master-key-btn">Выйти из сессии</button>
               </div>
             </div>
+          </div>
+        </div>
+
+        <!-- Backup & Restore -->
+        <div class="panel">
+          <div class="panel-header">
+            <h3>Резервная копия конфигурации</h3>
+          </div>
+          <div class="panel-body">
+            <p class="panel-desc">Экспорт всех настроек и провайдеров в JSON для сохранения или переноса.</p>
+            <div class="form-actions" style="display: flex; gap: var(--space-xs); flex-wrap: wrap;">
+              <button type="button" class="btn btn-secondary btn-sm" id="export-backup-btn">Экспорт (JSON)</button>
+              <button type="button" class="btn btn-secondary btn-sm" id="open-import-modal-btn">Импорт</button>
+            </div>
+          </div>
+        </div>
           </div>
         </div>
       </div>
@@ -322,6 +338,28 @@ response = client.chat.completions.create(
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" id="cancel-key-btn">Отмена</button>
           <button type="submit" class="btn btn-primary">Создать</button>
+        </div>
+      </form>
+    </div>
+  </dialog>
+
+  <!-- MODAL: IMPORT BACKUP -->
+  <dialog class="modal-dialog" id="import-modal">
+    <div class="modal-surface">
+      <div class="modal-header">
+        <h3>Импорт конфигурации</h3>
+        <button class="btn-icon" id="close-import-modal-btn">✕</button>
+      </div>
+
+      <form id="import-form" class="modal-form">
+        <div class="form-group">
+          <label for="import-json-input">JSON бэкапа</label>
+          <textarea id="import-json-input" class="input textarea" rows="8" placeholder='{"providers": [...]}' required></textarea>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" id="cancel-import-btn">Отмена</button>
+          <button type="submit" class="btn btn-primary">Применить</button>
         </div>
       </form>
     </div>

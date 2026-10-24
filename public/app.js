@@ -604,6 +604,60 @@ copyEndpointBtn.addEventListener('click', () => {
   setTimeout(() => { copyEndpointBtn.textContent = 'Скопировать'; }, 2000);
 });
 
+// Backup & Restore
+const exportBackupBtn = document.getElementById('export-backup-btn');
+const openImportModalBtn = document.getElementById('open-import-modal-btn');
+const importModal = document.getElementById('import-modal');
+const importForm = document.getElementById('import-form');
+const importJsonInput = document.getElementById('import-json-input');
+const closeImportModalBtn = document.getElementById('close-import-modal-btn');
+const cancelImportBtn = document.getElementById('cancel-import-btn');
+
+exportBackupBtn.addEventListener('click', async () => {
+  try {
+    const res = await apiFetch('/api/backup');
+    const data = await res.json();
+    const jsonStr = JSON.stringify(data, null, 2);
+
+    // Copy to clipboard or trigger download
+    await navigator.clipboard.writeText(jsonStr);
+    exportBackupBtn.textContent = 'Скопировано в буфер';
+    setTimeout(() => { exportBackupBtn.textContent = 'Экспорт (JSON)'; }, 2000);
+  } catch {
+    alert('Не удалось экспортировать бэкап');
+  }
+});
+
+openImportModalBtn.addEventListener('click', () => {
+  importJsonInput.value = '';
+  importModal.showModal();
+});
+closeImportModalBtn.addEventListener('click', () => importModal.close());
+cancelImportBtn.addEventListener('click', () => importModal.close());
+
+importForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  let parsed;
+  try {
+    parsed = JSON.parse(importJsonInput.value.trim());
+  } catch {
+    alert('Некорректный JSON');
+    return;
+  }
+
+  try {
+    await apiFetch('/api/backup', {
+      method: 'POST',
+      body: JSON.stringify(parsed)
+    });
+    importModal.close();
+    alert('Конфигурация успешно восстановлена');
+    refreshAll();
+  } catch {
+    alert('Ошибка при импорте бэкапа');
+  }
+});
+
 // HTML Escape helper
 function escapeHtml(str) {
   if (!str) return '';
